@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='utf-8' />
+    <title></title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/mapbox/assembly/publisher-staging/src/svgs/mapbox.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v3.16.0/mapbox-gl.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v3.16.0/mapbox-gl.css' rel='stylesheet' />
+    <script src="https://cdn.jsdelivr.net/npm/mapbox-gl-globe-minimap@1.2.0/dist/bundle.js"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="https://unpkg.com/scrollama"></script>
+    <style>
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Montserrat", sans-serif;
+            font-optical-sizing: auto;
+            font-weight: 300;
+            font-style: normal;
+        }
+
+        a,
+        a:hover,
+        a:visited {
+            color: #ffffff;
+        }
+
+        #map {
+            top: 0;
+            height: 100vh;
+            width: 100vw;
+            position: fixed;
+        }
+
+        #header {
+            margin: auto;
+            width: 100%;
+            position: relative;
+            z-index: 5;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.25);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #header h1,
+        #header h2,
+        #header p {
+            margin: 0;
+            padding: 2vh 2vw;
+            text-align: center;
+            font-weight: 300;
+        }
+
+        #header h1 {
+            font-size: 3em;
+        }
+
+        #header .logo {
+            width: 200px;
+        }
+
+        #footer {
+            width: 100%;
+            min-height: 5vh;
+            padding-top: 2vh;
+            padding-bottom: 2vh;
+            text-align: center;
+            line-height: 25px;
+            font-size: 13px;
+            position: relative;
+            z-index: 5;
+            background-color: rgba(0, 0, 0, 0.25);
+        }
+
+        #features {
+            padding-top: 10vh;
+            padding-bottom: 10vh;
+        }
+
+        .hidden {
+            visibility: hidden;
+        }
+
+        .centered {
+            width: 50vw;
+            margin: 0 auto;
+        }
+
+        .lefty {
+            width: 33vw;
+            margin-left: 5vw;
+        }
+
+        .righty {
+            width: 33vw;
+            margin-left: 62vw;
+        }
+
+        .fully {
+            width: 100%;
+            margin: auto;
+        }
+
+        .light {
+            color: #444;
+            background-color: #fafafa;
+        }
+
+        .dark {
+            color: #fafafa;
+            background-color: #444;
+        }
+
+        .red {
+            color: #ffffff;
+            background-color: rgba(144, 1, 3, 0.75);
+        }
+
+        .step {
+            padding-bottom: 50vh;
+            /* margin-bottom: 10vh; */
+            opacity: 0.25;
+        }
+
+        .step.active {
+            opacity: 0.9;
+        }
+
+        .step div {
+            padding: 25px 50px;
+            line-height: 25px;
+            font-size: 13px;
+        }
+
+        .step img {
+            width: 100%;
+        }
+
+        .step span.imageCredits {
+            font-size: 0.85em;
+            display: flex;
+            justify-content: center;
+            text-align: center;
+            margin-top: -5px;
+        }
+
+        .step div.description {
+            margin: 0;
+            padding: 0;
+        }
+
+        .step div iframe {
+            margin: 1em 0;
+        }
+
+        @media (max-width: 750px) {
+
+            .centered,
+            .lefty,
+            .righty,
+            .fully {
+                width: 90vw;
+                margin: 0 auto;
+            }
+
+            #header h1 {
+                font-size: 2em;
+            }
+        }
+
+        /* Fix issue on mobile browser where scroll breaks  */
+        .mapboxgl-canvas-container.mapboxgl-touch-zoom-rotate.mapboxgl-touch-drag-pan,
+        .mapboxgl-canvas-container.mapboxgl-touch-zoom-rotate.mapboxgl-touch-drag-pan .mapboxgl-canvas {
+            touch-action: unset;
+        }
+
+        #youtube-autoplay-toggle {
+            margin: 1em auto;
+            padding: 0.5em 1em;
+            display: block;
+            cursor: pointer;
+            font-family: 'Montserrat';
+            border: none;
+            background: rgb(255, 255, 255);
+            color: rgb(0, 0, 0);
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="map"></div>
+    <div id="story"></div>
+
+    <script src="./heatmaps.js"></script>
+    <script src="./config.js"></script>
+    <script>
+        // Autoplay Youtube videos in a chapter
+        let youtubeVideoPlayerMap = new Map();
+        const YT_AUTOPLAY_KEY = 'youtubeAutoplayEnabled';
+        try {
+            localStorage.removeItem(YT_AUTOPLAY_KEY);
+        } catch (e) { }
+
+        function isYoutubeAutoplayAvailableInConfig() {
+            return config && config.youtubeAutoplay === true;
+        }
+
+        function isYoutubeAutoplayEnabled() {
+            return !!localStorage.getItem(YT_AUTOPLAY_KEY);
+        }
+
+        function setYoutubeAutoplayEnabled(enabled) {
+            if (enabled) {
+                localStorage.setItem(YT_AUTOPLAY_KEY, '1');
+            } else {
+                localStorage.removeItem(YT_AUTOPLAY_KEY);
+            }
+            const btn = document.getElementById('youtube-autoplay-toggle');
+            if (btn) btn.innerText = enabled ? 'Desactivar reproducción automática' : 'Activar reproducción automática';
+        }
+
+        function getYoutubeEmbedSrc(code) {
+            return 'https://www.youtube.com/embed/' + code + '?enablejsapi=1&rel=0';
+        }
+
+        function tryPlayVideoYoutube(player) {
+            try {
+                try { player.unMute(); } catch (e) { }
+                try { player.playVideo(); } catch (e) { }
+            } catch (e) { }
+        }
+
+        function onYouTubeIframeAPIReady() {
+            config.chapters.forEach((record, idx) => {
+                if (record.video) {
+                    const id = 'youtube-video-' + record.id;
+                    const iframe = document.getElementById(id);
+                    if (iframe) {
+                        const desiredSrc = getYoutubeEmbedSrc(record.video.codYoutube);
+                        if (iframe.src !== desiredSrc) iframe.src = desiredSrc;
+                    }
+                    
+                    const player = new YT.Player(id, {
+                        events: {
+                            onReady: function (e) {
+                                youtubeVideoPlayerMap.set(record.id, { player: e.target, ready: true });
+                                if (isYoutubeAutoplayEnabled()) {
+                                    tryPlayVideoYoutube(e.target);
+                                }
+                            },
+                            onError: function (e) {
+                                youtubeVideoPlayerMap.set(record.id, { player: e.target || null, ready: false });
+                            }
+                        }
+                    });
+                    
+                    youtubeVideoPlayerMap.set(record.id, { player: player, ready: false });
+                }
+            });
+        }
+
+    // initLoad removed as it's unused
+        var layerTypes = {
+            'fill': ['fill-opacity'],
+            'line': ['line-opacity'],
+            'circle': ['circle-opacity', 'circle-stroke-opacity'],
+            'symbol': ['icon-opacity', 'text-opacity'],
+            'raster': ['raster-opacity'],
+            'fill-extrusion': ['fill-extrusion-opacity'],
+            'heatmap': ['heatmap-opacity']
+        }
+
+        var alignments = {
+            'left': 'lefty',
+            'center': 'centered',
+            'right': 'righty',
+            'full': 'fully'
+        }
+
+        // Detect if user is in mobile or desktop
+        function isMobile() {
+            return window.matchMedia && window.matchMedia('(max-width: 750px)').matches;
+        }
+
+        // Initial location according to the device (fallback to config.location if not exist the structure)
+        function getStartLocation() {
+            return (isMobile() && config.location && config.location.mobile) ? config.location.mobile :
+                (config.location && config.location.desktop) ? config.location.desktop : config.location;
+        }
+        // Helper to get the chapter location according to the device (fallback to config.location if not exist the structure)
+        function getLocationForChapter(chapter) {
+            if (!chapter || !chapter.location) return {};
+            if (isMobile() && chapter.location.mobile) return chapter.location.mobile;
+            if (!isMobile() && chapter.location.desktop) return chapter.location.desktop;
+            return chapter.location;
+        }
+
+        function getLayerPaintType(layer) {
+            var layerType = map.getLayer(layer).type;
+            return layerTypes[layerType];
+        }
+
+        function setLayerOpacity(layer) {
+            var paintProps = getLayerPaintType(layer.layer);
+            paintProps.forEach(function (prop) {
+                var options = {};
+                if (layer.duration) {
+                    var transitionProp = prop + "-transition";
+                    options = { "duration": layer.duration };
+                    map.setPaintProperty(layer.layer, transitionProp, options);
+                }
+                map.setPaintProperty(layer.layer, prop, layer.opacity, options);
+            });
+        }
+
+        var story = document.getElementById('story');
+        var features = document.createElement('div');
+        features.setAttribute('id', 'features');
+
+        var header = document.createElement('div');
+
+        if (config.logo) {
+            // Favicon
+            let favicon = document.querySelector("link[rel~='icon']");
+            if (!favicon) {
+                favicon = document.createElement("link");
+                favicon.rel = "icon";
+                document.head.appendChild(favicon);
+            }
+            favicon.href = config.logo;
+
+            var logo = document.createElement('img');
+            logo.src = config.logo;
+            logo.classList.add('logo');
+            header.appendChild(logo);
+        }
+
+        if (config.title) {
+            document.title = config.title;
+            var titleText = document.createElement('h1');
+            titleText.innerText = config.title;
+            header.appendChild(titleText);
+        }
+
+        if (config.subtitle) {
+            var subtitleText = document.createElement('h2');
+            subtitleText.innerText = config.subtitle;
+            header.appendChild(subtitleText);
+        }
+        
+        // Show autoplay consent button only on desktop — mobile autoplay is unreliable
+        if (isYoutubeAutoplayAvailableInConfig() && !isMobile()) {
+            var autoplayBtn = document.createElement('button');
+            autoplayBtn.setAttribute('id', 'youtube-autoplay-toggle');
+            autoplayBtn.innerText = isYoutubeAutoplayEnabled() ? 'Desactivar reproducción automática de vídeo' : 'Activar reproducción automática de vídeo';
+            autoplayBtn.addEventListener('click', function () {
+                var enabled = !isYoutubeAutoplayEnabled();
+                setYoutubeAutoplayEnabled(enabled);
+                if (enabled) {
+                    const activeSteps = document.querySelectorAll('.step.active');
+                    activeSteps.forEach(s => {
+                        const id = s.id;
+                        const obj = youtubeVideoPlayerMap.get(id);
+                        if (obj && obj.player && obj.ready) tryPlayVideoYoutube(obj.player);
+                    });
+                }
+            });
+            header.appendChild(autoplayBtn);
+        }
+
+        if (header.innerText.length > 0) {
+            header.classList.add(config.theme);
+            header.setAttribute('id', 'header');
+            story.appendChild(header);
+        }
+
+        config.chapters.forEach((record, idx) => {
+            var container = document.createElement('div');
+            var chapter = document.createElement('div');
+
+            if (record.title) {
+                var title = document.createElement('h3');
+                title.innerText = record.title;
+                chapter.appendChild(title);
+            }
+
+            if (record.image && record.image.src) {
+                var image = new Image();
+                image.src = record.image.src;
+                chapter.appendChild(image);
+                if (record.image.credits) {
+                    var imageCredits = document.createElement('span');
+                    imageCredits.classList.add('imageCredits');
+                    imageCredits.innerText = record.image.credits;
+                    chapter.appendChild(imageCredits);
+                }
+            }
+
+            if (record.description) {
+                var story = document.createElement('p');
+                story.classList.add('description');
+                story.innerHTML = record.description;
+                chapter.appendChild(story);
+            }
+
+            if (record.video) {
+                var videoFrame = document.createElement('iframe');
+                videoFrame.setAttribute('id', 'youtube-video-' + record.id);
+                // src will include autoplay & mute if the user has enabled autoplay via the header button
+                videoFrame.setAttribute('src', getYoutubeEmbedSrc(record.video.codYoutube));
+                videoFrame.setAttribute('title', record.video.title);
+                videoFrame.setAttribute('width', '100%');
+                videoFrame.setAttribute('height', '300px');
+                videoFrame.setAttribute('frameborder', 0);
+                videoFrame.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+                videoFrame.setAttribute('allowfullscreen', '');
+                chapter.appendChild(videoFrame);
+            }
+
+            if (record.iframe) {
+                var iframeElement = document.createElement('iframe');
+                iframeElement.setAttribute('id', 'iframe-' + record.id);
+                iframeElement.setAttribute('src', record.iframe.src);
+                iframeElement.setAttribute('title', record.iframe.title);
+                iframeElement.setAttribute('width', record.iframe.weidth);
+                iframeElement.setAttribute('height', record.iframe.heigh);
+                iframeElement.setAttribute('class', record.iframe.class);
+                iframeElement.setAttribute('style', record.iframe.style);
+                iframeElement.setAttribute('frameborder', record.iframe.frameborder);
+                iframeElement.setAttribute('scrolling', record.iframe.scrolling);
+                iframeElement.setAttribute('sandbox', record.iframe.sandbox);
+                chapter.appendChild(iframeElement);
+            }
+
+            container.setAttribute('id', record.id);
+            container.classList.add('step');
+            if (idx === 0) {
+                container.classList.add('active');
+            }
+
+            chapter.classList.add(config.theme);
+            container.appendChild(chapter);
+            container.classList.add(alignments[record.alignment] || 'centered');
+            if (record.hidden) {
+                container.classList.add('hidden');
+            }
+            features.appendChild(container);
+        });
+
+        story.appendChild(features);
+
+        var footer = document.createElement('div');
+
+        if (config.footer) {
+            var footerText = document.createElement('p');
+            footerText.innerHTML = config.footer;
+            footer.appendChild(footerText);
+        }
+
+        if (footer.innerText.length > 0) {
+            footer.classList.add(config.theme);
+            footer.setAttribute('id', 'footer');
+            story.appendChild(footer);
+        }
+
+        mapboxgl.accessToken = config.accessToken;
+
+        var startLocation = getStartLocation();
+
+        var map = new mapboxgl.Map({
+            container: 'map',
+            style: config.style,
+            center: startLocation.center,
+            zoom: startLocation.zoom,
+            bearing: startLocation.bearing,
+            pitch: startLocation.pitch,
+            interactive: false,
+            projection: config.projection
+        });
+        
+        // Heatmap by year loop
+        window.expansionLoop = window.expansionLoop || { intervalId: null, years: [], index: 0, active: false };
+        (function () {
+            const HEATMAP_INTERVAL_MS = 3000;
+            const HEATMAP_SOURCE_ID = 'heatmap-src';
+            const HEATMAP_LAYER_ID = 'heatmap-layer';
+            const HEATMAP_PAINT = {
+                'heatmap-weight': 0.5,
+                'heatmap-intensity': 0.5,
+                'heatmap-color': [
+                    "interpolate",
+                    ["linear"],
+                    ["heatmap-density"],
+                    0,
+                    "rgba(0, 0, 255, 0)",
+                    0.1,
+                    "royalblue",
+                    0.3,
+                    "cyan",
+                    0.5,
+                    "lime",
+                    0.7,
+                    "yellow",
+                    1,
+                    "red"
+                ],
+                'heatmap-radius': 40,
+                'heatmap-opacity': 1
+            };
+
+            function ensureHeatmapSingleLayer() {
+                try {
+                    if (!map.getSource(HEATMAP_SOURCE_ID)) {
+                        map.addSource(HEATMAP_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                    }
+                    if (!map.getLayer(HEATMAP_LAYER_ID)) {
+                        map.addLayer({
+                            id: HEATMAP_LAYER_ID,
+                            type: 'heatmap',
+                            source: HEATMAP_SOURCE_ID,
+                            paint: HEATMAP_PAINT
+                        });
+                        map.setPaintProperty(HEATMAP_LAYER_ID, 'heatmap-opacity-transition', { duration: 0 });
+                    }
+                } catch (e) { console.error('Error al asegurar la capa única de heatmap', e); }
+            }
+
+            function showHeatmapYearData(year) {
+                try {
+                    const data = window.layersByYear[year] || { type: 'FeatureCollection', features: [] };
+                    map.getSource(HEATMAP_SOURCE_ID).setData(data);
+                    map.setPaintProperty(HEATMAP_LAYER_ID, 'heatmap-opacity', 1);
+                } catch (e) { console.error(e); }
+            }
+
+            window.startHeatmapYearsLoop = function () {
+                try {
+                    const chapterNode = document.getElementById('expansion-nacional');
+                    if (chapterNode) {
+                        const iframes = chapterNode.querySelectorAll('iframe');
+                        iframes.forEach(f => {
+                            if (f) {
+                                		// Avoid reloading YouTube iframes (they are controlled via the Player API)
+                                		if (!f.id || !f.id.startsWith('youtube-video-')) {
+                                			f.src = f.src;
+                                		}
+                                		f.style.display = 'block';
+                            }
+                        });
+                    }
+                } catch (e) { }
+
+                if (!map || window.expansionLoop.active) return;
+                if (!window.layersByYear || typeof window.layersByYear !== 'object' || Object.keys(window.layersByYear).length === 0) {
+                    console.error('layersByYear no está definido o vacío.');
+                    return;
+                }
+
+                const years = Object.keys(window.layersByYear).sort();
+                window.expansionLoop.years = years.filter(y => window.layersByYear[y] && Array.isArray(window.layersByYear[y].features) && window.layersByYear[y].features.length > 0);
+
+                ensureHeatmapSingleLayer();
+
+                window.expansionLoop.active = true;
+                window.expansionLoop.index = 0;
+
+                showHeatmapYearData(window.expansionLoop.years[0]);
+
+                window.expansionLoop.intervalId = setInterval(() => {
+                    if (!window.expansionLoop.active) return;
+                    const next = (window.expansionLoop.index + 1) % window.expansionLoop.years.length;
+                    window.expansionLoop.index = next;
+                    showHeatmapYearData(window.expansionLoop.years[next]);
+                }, HEATMAP_INTERVAL_MS);
+            };
+
+            window.stopHeatmapYearsLoop = function () {
+                if (!window.expansionLoop || !window.expansionLoop.active) return;
+                window.expansionLoop.active = false;
+                if (window.expansionLoop.intervalId) {
+                    clearInterval(window.expansionLoop.intervalId);
+                    window.expansionLoop.intervalId = null;
+                }
+                try { map.setPaintProperty(HEATMAP_LAYER_ID, 'heatmap-opacity', 0); } catch (e) { }
+                window.expansionLoop.years = [];
+                window.expansionLoop.index = 0;
+            };
+        })();
+
+
+        // Create a inset map if enabled in config.js
+        if (config.inset) {
+            map.addControl(
+                new GlobeMinimap({ ...config.insetOptions }),
+                config.insetPosition
+            );
+        }
+
+        if (config.showMarkers) {
+            var marker = new mapboxgl.Marker({ color: config.markerColor });
+            marker.setLngLat(startLocation.center).addTo(map);
+        }
+
+        // instantiate the scrollama
+        var scroller = scrollama();
+
+        map.on("load", function () {
+
+			// Hide all layers
+			const layers = map.getStyle().layers;
+			for (const layer of layers) {
+				var paintProps = getLayerPaintType(layer.id);
+				paintProps.forEach(function (prop) {
+					var options = {};
+					map.setPaintProperty(layer.id, prop, 0, options);
+				});
+				map.setLayoutProperty(layer.id, 'visibility', 'visible');
+			}
+        
+            if (config.use3dTerrain) {
+                map.addSource('mapbox-dem', {
+                    'type': 'raster-dem',
+                    'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+                    'tileSize': 512,
+                    'maxzoom': 14
+                });
+                // add the DEM source as a terrain layer with exaggerated height
+                map.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+
+                // add a sky layer that will show when the map is highly pitched
+                map.addLayer({
+                    'id': 'sky',
+                    'type': 'sky',
+                    'paint': {
+                        'sky-type': 'atmosphere',
+                        'sky-atmosphere-sun': [0.0, 0.0],
+                        'sky-atmosphere-sun-intensity': 15
+                    }
+                });
+            };
+
+            // setup the instance, pass callback functions
+            scroller
+                .setup({
+                    step: '.step',
+                    offset: 0.5,
+                    progress: true
+                })
+                .onStepEnter(async response => {
+                    
+                    var current_chapter = config.chapters.findIndex(chap => chap.id === response.element.id);
+                    var chapter = config.chapters[current_chapter];
+
+                    response.element.classList.add('active');
+                    map[chapter.mapAnimation || 'flyTo'](getLocationForChapter(chapter));
+
+                    if (config.showMarkers) {
+                        var _loc = getLocationForChapter(chapter);
+                        if (_loc && _loc.center) marker.setLngLat(_loc.center);
+                    }
+                    if (chapter.onChapterEnter.length > 0) {
+                        chapter.onChapterEnter.forEach(setLayerOpacity);
+                    }
+                    if (chapter.onChapterEnterCallback) {
+                        window[chapter.onChapterEnterCallback]();
+                    }
+                    if (chapter.rotateAnimation) {
+                        map.once('moveend', () => {
+                            const rotateNumber = map.getBearing();
+                            map.rotateTo(rotateNumber + 180, {
+                                duration: 30000, easing: function (t) {
+                                    return t;
+                                }
+                            });
+                        });
+                    }
+                    if (config.auto) {
+                        var next_chapter = (current_chapter + 1) % config.chapters.length;
+                        map.once('moveend', () => {
+                            document.querySelectorAll('[data-scrollama-index="' + next_chapter.toString() + '"]')[0].scrollIntoView();
+                        });
+                    }
+
+                    // Autoplay of YouTube videos when entering a chapter (only if user enabled it)
+                    if (youtubeVideoPlayerMap.has(response.element.id)) {
+                        const obj = youtubeVideoPlayerMap.get(response.element.id);
+                        if (obj && obj.player && isYoutubeAutoplayEnabled() && obj.ready) {
+                            tryPlayVideoYoutube(obj.player);
+                        }
+                    }
+
+                    
+                })
+                .onStepExit(response => {
+
+                    var chapter = config.chapters.find(chap => chap.id === response.element.id);
+                    response.element.classList.remove('active');
+                    if (chapter.onChapterExit.length > 0) {
+                        chapter.onChapterExit.forEach(setLayerOpacity);
+                    }
+
+                    // Call optional onChapterExitCallback to stop custom behaviors (like the expansion loop)
+                    if (chapter.onChapterExitCallback && window[chapter.onChapterExitCallback]) {
+                        try { window[chapter.onChapterExitCallback](); } catch (e) { console.error(e); }
+                    }
+
+                    // Pause Youtube videos when exiting a chapter
+                    if (youtubeVideoPlayerMap.has(response.element.id)) {
+                        const obj = youtubeVideoPlayerMap.get(response.element.id);
+                        if (obj && obj.player && obj.player.pauseVideo) {
+                            try { obj.player.pauseVideo(); } catch (e) { }
+                        }
+                    }
+
+                });
+
+
+            if (config.auto) {
+                document.querySelectorAll('[data-scrollama-index="0"]')[0].scrollIntoView();
+            }
+        });
+
+    </script>
+
+</body>
+
+</html>
